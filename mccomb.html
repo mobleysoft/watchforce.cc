@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WATCHFORCE.CC | MCCOMB - Entity Screening</title>
+<style>
+  :root {
+    --bg-dark: #050505; --accent: #ffb020; --glass-bg: rgba(20,20,20,0.6);
+    --glass-border: rgba(255,255,255,0.08); --text-primary: #f0f0f0; --text-muted: #888;
+    --danger: #ff5c5c;
+  }
+  body {
+    margin: 0; padding: 40px 24px; background-color: var(--bg-dark);
+    background-image: radial-gradient(circle at 50% 0%, #151515 0%, #000 70%);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh; max-width: 760px; margin-left: auto; margin-right: auto;
+  }
+  h1 { font-weight: 600; margin-bottom: 4px; }
+  .badge-detective { display:inline-block; background: rgba(255,176,32,0.15); color: var(--accent);
+    padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .subtitle { color: var(--text-muted); margin-bottom: 20px; font-size: 14px; line-height: 1.6; }
+  .search-row { display: flex; gap: 10px; margin-bottom: 20px; }
+  input#q {
+    flex: 1; background: var(--glass-bg); border: 1px solid var(--glass-border); color: var(--text-primary);
+    padding: 12px 16px; border-radius: 10px; font-size: 15px;
+  }
+  button {
+    background: var(--accent); color: #000; border: none; border-radius: 10px;
+    padding: 12px 22px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  #status { color: var(--text-muted); font-size: 13px; margin-bottom: 16px; }
+  .result {
+    background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 10px;
+    padding: 14px 18px; margin-bottom: 10px;
+  }
+  .result .name { font-weight: 700; color: var(--danger); }
+  .result .meta { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+  .clear-result { background: rgba(0,255,120,0.1); border: 1px solid rgba(0,255,120,0.2); color: #7fffb0;
+    padding: 14px 18px; border-radius: 10px; }
+  .footnote { margin-top: 30px; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="badge-detective">MCCOMB &middot; ENTITY SCREENING</div>
+  <h1>Background Check: Sanctions Screening</h1>
+  <div class="subtitle">
+    Screens a name against the U.S. Treasury OFAC Specially Designated Nationals (SDN) list —
+    the same public sanctions data real compliance screening tools use. This is public-record
+    screening only: no private surveillance, no non-public data sources. Real due diligence,
+    not "intelligence" in any covert sense.
+  </div>
+
+  <div class="search-row">
+    <input type="text" id="q" placeholder="Enter a name or company to screen...">
+    <button id="go">Screen</button>
+  </div>
+  <div id="status">Loading OFAC SDN dataset...</div>
+  <div id="results"></div>
+
+  <div class="footnote">
+    Data source: U.S. Treasury OFAC SDN list (<a href="https://www.treasury.gov/ofac/downloads/sdn.csv">treasury.gov/ofac</a>),
+    19,321 entries, fetched 2026-08-29. This tool does substring matching only — it is a starting
+    point for due diligence, not a legal compliance determination. Always verify any match against
+    the live OFAC list directly before acting on it.
+  </div>
+
+  <script>
+    let data = [];
+    fetch('mccomb_sdn_data.json')
+      .then(r => r.json())
+      .then(d => {
+        data = d;
+        document.getElementById('status').textContent = `Loaded ${d.length.toLocaleString()} real OFAC SDN entries. Ready to screen.`;
+      })
+      .catch(e => {
+        document.getElementById('status').textContent = 'Failed to load dataset: ' + e.message;
+      });
+
+    function screen() {
+      const q = document.getElementById('q').value.trim().toUpperCase();
+      const resultsEl = document.getElementById('results');
+      if (!q) { resultsEl.innerHTML = ''; return; }
+      const matches = data.filter(e => e.name.toUpperCase().includes(q)).slice(0, 25);
+      if (matches.length === 0) {
+        resultsEl.innerHTML = `<div class="clear-result">No match found in the OFAC SDN list for "${q}". (Absence of a match is not a full compliance clearance - this checks one public list only.)</div>`;
+        return;
+      }
+      resultsEl.innerHTML = matches.map(m => `
+        <div class="result">
+          <div class="name">⚠ ${m.name}</div>
+          <div class="meta">${m.program ? 'Program: ' + m.program : ''} ${m.type ? '&middot; Type: ' + m.type : ''}</div>
+          ${m.remarks ? `<div class="meta">${m.remarks}</div>` : ''}
+        </div>
+      `).join('');
+    }
+    document.getElementById('go').addEventListener('click', screen);
+    document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') screen(); });
+  </script>
+</body>
+</html>
