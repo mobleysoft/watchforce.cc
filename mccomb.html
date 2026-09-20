@@ -41,6 +41,9 @@
     padding: 14px 18px; border-radius: 10px; }
   .footnote { margin-top: 30px; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
   a { color: var(--accent); }
+  .record-note { font-size: 13px; color: var(--accent); margin-top: 4px; }
+  .verify-panel { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--glass-border); }
+  #verify-result { font-size: 13px; color: var(--text-muted); margin-top: 10px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -59,12 +62,25 @@
   </div>
   <div id="status">Loading OFAC SDN dataset...</div>
   <div id="results"></div>
+  <div id="record-note" class="record-note"></div>
 
   <div class="footnote">
     Data source: U.S. Treasury OFAC SDN list (<a href="https://www.treasury.gov/ofac/downloads/sdn.csv">treasury.gov/ofac</a>),
     19,321 entries, fetched 2026-08-29. This tool does substring matching only — it is a starting
     point for due diligence, not a legal compliance determination. Always verify any match against
     the live OFAC list directly before acting on it.
+  </div>
+
+  <div class="verify-panel">
+    <div class="footnote" style="margin-top:0">
+      Every screening run above is recorded server-side with a timestamp and reference ID — a real
+      audit trail for your compliance file, not a compliance determination itself. Look one up here:
+    </div>
+    <div class="search-row">
+      <input type="text" id="verify-id" placeholder="Screening reference ID">
+      <button id="verify-go">Look up</button>
+    </div>
+    <div id="verify-result"></div>
   </div>
 
   <script>
@@ -79,13 +95,32 @@
         document.getElementById('status').textContent = 'Failed to load dataset: ' + e.message;
       });
 
+    async function logScreening(query, matchCount, matches) {
+      const noteEl = document.getElementById('record-note');
+      try {
+        const res = await fetch('/api/screen/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, match_count: matchCount, matches: matches.map(m => ({ name: m.name, program: m.program || null })) })
+        });
+        const d = await res.json();
+        if (!res.ok) { noteEl.textContent = ''; return; }
+        noteEl.textContent = `Recorded for your compliance file — reference ${d.id}, ${d.screened_at} UTC.`;
+      } catch (e) {
+        noteEl.textContent = '';
+      }
+    }
+
     function screen() {
       const q = document.getElementById('q').value.trim().toUpperCase();
       const resultsEl = document.getElementById('results');
+      document.getElementById('record-note').textContent = '';
       if (!q) { resultsEl.innerHTML = ''; return; }
-      const matches = data.filter(e => e.name.toUpperCase().includes(q)).slice(0, 25);
+      const allMatches = data.filter(e => e.name.toUpperCase().includes(q));
+      const matches = allMatches.slice(0, 25);
       if (matches.length === 0) {
         resultsEl.innerHTML = `<div class="clear-result">No match found in the OFAC SDN list for "${q}". (Absence of a match is not a full compliance clearance - this checks one public list only.)</div>`;
+        logScreening(q, 0, []);
         return;
       }
       resultsEl.innerHTML = matches.map(m => `
@@ -95,9 +130,25 @@
           ${m.remarks ? `<div class="meta">${m.remarks}</div>` : ''}
         </div>
       `).join('');
+      logScreening(q, allMatches.length, matches);
     }
     document.getElementById('go').addEventListener('click', screen);
     document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') screen(); });
+
+    document.getElementById('verify-go').addEventListener('click', async () => {
+      const id = document.getElementById('verify-id').value.trim();
+      const out = document.getElementById('verify-result');
+      if (!id) { out.textContent = ''; return; }
+      out.textContent = 'Looking up...';
+      try {
+        const res = await fetch('/api/screen/log/' + encodeURIComponent(id));
+        const d = await res.json();
+        if (!res.ok) { out.textContent = d.detail && d.detail.message || 'not found'; return; }
+        out.textContent = `Query: "${d.query}"\nMatches found: ${d.match_count}\nScreened at: ${d.screened_at} UTC`;
+      } catch (e) {
+        out.textContent = 'Lookup failed: ' + e.message;
+      }
+    });
   </script>
 </body>
 </html>
