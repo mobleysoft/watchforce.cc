@@ -1,0 +1,12 @@
+name = "watchforce-cc-worker"
+main = "worker.js"
+compatibility_date = "2025-10-31"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "watchforce_db"
+database_id = "77d5e29e-f9bb-4a2b-b760-b8cd3e22ff16"
+
+[triggers]
+crons = ["*/5 * * * *"]
