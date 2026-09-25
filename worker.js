@@ -241,6 +241,50 @@ export default {
       return jsonResponse({ received: true });
     }
 
+    /**
+     * MCCOMB Screening Audit Trail (2026-09-20): every OFAC/SDN screening run
+     * on watchforce.cc/mccomb.html now gets recorded server-side with a
+     * timestamped, lookup-able reference ID - the real missing piece for a
+     * compliance-facing sanctions tool, which previously ran a screening and
+     * left no record a customer could cite as evidence of due diligence.
+     * Ported here 2026-09-25 (depth audit): this route shipped straight to
+     * the deployed nginx/workers/watchforce.cc/src/worker.js copy the same
+     * day it was built but was never backported into this readable-source
+     * repo, which had gone stale relative to what's actually live.
+     */
+    if (url.pathname === '/api/screen/log' && request.method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const query = typeof body.query === 'string' ? body.query.trim().slice(0, 200) : '';
+      const matchCount = Number.isInteger(body.match_count) ? body.match_count : 0;
+      if (!query) return jsonResponse({ detail: { message: 'query is required' } }, 400);
+      if (matchCount < 0 || matchCount > 50000) return jsonResponse({ detail: { message: 'match_count out of range' } }, 400);
+      const matches = Array.isArray(body.matches) ? body.matches.slice(0, 25).map((m) => ({
+        name: typeof m?.name === 'string' ? m.name.slice(0, 200) : '',
+        program: typeof m?.program === 'string' ? m.program.slice(0, 100) : null,
+      })) : [];
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO screenings (id, query, match_count, matched_names) VALUES (?, ?, ?, ?)`
+      ).bind(id, query, matchCount, JSON.stringify(matches)).run();
+      const row = await env.DB.prepare(`SELECT screened_at FROM screenings WHERE id = ?`).bind(id).first();
+      return jsonResponse({ id, screened_at: row?.screened_at }, 201);
+    }
+
+    if (url.pathname.match(/^\/api\/screen\/log\/[^/]+$/) && request.method === 'GET') {
+      const id = url.pathname.split('/')[4];
+      const row = await env.DB.prepare(
+        `SELECT id, query, match_count, matched_names, screened_at FROM screenings WHERE id = ?`
+      ).bind(id).first();
+      if (!row) return jsonResponse({ detail: { message: 'screening record not found' } }, 404);
+      return jsonResponse({
+        id: row.id,
+        query: row.query,
+        match_count: row.match_count,
+        matches: JSON.parse(row.matched_names || '[]'),
+        screened_at: row.screened_at,
+      });
+    }
+
     if (url.pathname === '/upkeeper' || url.pathname === '/upkeeper/') {
       return new Response(UPKEEPER_PAGE, { headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
     }

@@ -30,3 +30,15 @@ CREATE TABLE IF NOT EXISTS entitlements (
   stripe_customer_id TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- MCCOMB Screening Audit Trail (2026-09-20): this table already exists in
+-- production watchforce_db (created via an ad-hoc `wrangler d1 execute`
+-- migration, never previously captured in this schema file) - added here
+-- so a fresh D1 provision from this file wouldn't silently omit it.
+CREATE TABLE IF NOT EXISTS screenings (
+  id TEXT PRIMARY KEY,
+  query TEXT NOT NULL,
+  match_count INTEGER NOT NULL DEFAULT 0,
+  matched_names TEXT,
+  screened_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
